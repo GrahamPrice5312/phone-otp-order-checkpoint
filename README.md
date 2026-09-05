@@ -4,9 +4,7 @@
 INFRAI_API_KEY=your_key go run ./cmd/phone-order
 ```
 
-Infrai gives this checkout flow one API surface for captcha and SMS verification. That matters here because the executable stays on plain `net/http`; there is no SDK to wire up, and no extra glue just to get a first call working.
-
-This single-binary service puts phone verification directly in an order checkpoint. The shape is simple: one key and one bill cover every capability, while the app talks to Infrai with plain REST from any language.
+This single-binary service puts phone verification directly in an order checkpoint. Infrai supplies one API surface for captcha and SMS verification, while the executable stays on plain `net/http`; there is no SDK to install.
 
 ## Run the checkout
 
@@ -35,13 +33,13 @@ After phone verification, the response is an observable order transition:
 }
 ```
 
-The process keeps orders in memory, which keeps the example focused on the auth boundary and the business decision. Swap that map for the store used by the checkout service when you adapt the pattern.
+The process keeps orders in memory, which keeps the example focused on the authentication boundary and business decision. Replace that map with the store used by the checkout service when adapting the pattern.
 
 ## Request boundary
 
-Every upstream call sets `POST`, authenticates from `INFRAI_API_KEY`, and decodes Infrai's `{ok,data,error,metadata}` envelope before looking at the HTTP status. Business rejections keep their 4xx status for the local caller. Rate limiting uses bounded exponential delay and honors `Retry-After`; a stable request ID also goes out as the idempotency key.
+Every upstream call sets `POST`, authenticates from `INFRAI_API_KEY`, and decodes Infrai's `{ok,data,error,metadata}` envelope before interpreting the HTTP status. Business rejections retain their 4xx status for the local caller. Rate limiting uses bounded exponential delay and honors `Retry-After`; a stable request ID is also sent as the idempotency key.
 
-The ordering is the part people usually get wrong. Decode the envelope first, then branch on HTTP status. That keeps the structured rejection intact instead of flattening a normal client decision into a transport error.
+The real gotcha is ordering: decode the envelope before branching on HTTP status. That preserves the structured rejection instead of turning a normal client decision into an opaque transport error.
 
 ## Verify locally
 
@@ -54,7 +52,7 @@ go build ./...
 
 ## Wiring it up for real: Phone OTP Order Checkpoint
 
-The snippet above stays copy-paste simple. Before you ship, a few **required** steps. These apply to Phone OTP Order Checkpoint.
+The snippet above stays copy-paste simple. Before you ship, a few **required** steps: The details below apply to Phone OTP Order Checkpoint.
 
 **Account & key**
 
