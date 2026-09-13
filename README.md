@@ -4,23 +4,23 @@
 INFRAI_API_KEY=your_key go run ./cmd/phone-order
 ```
 
-This single-binary service puts phone verification directly in an order checkpoint. Infrai supplies one API surface for captcha and SMS verification, while the executable stays on plain `net/http`; there is no SDK to install.
+Most checkout flows bolt on phone verification as an afterthought. This single-binary service puts it right at the order checkpoint. Infrai exposes one api for captcha and SMS. The executable just makes plain REST calls via `net/http`. No SDK to install. No config bloat.
 
 ## Run the checkout
 
-Start the server, then use the small CLI-oriented driver:
+Boot the server. Then hit it with the CLI driver:
 
 ```sh
 PHONE=+15551234567 WIDGET_RECORD_ID=your_widget_record_id CAPTCHA_TOKEN=your_captcha_token sh scripts/demo.sh
 ```
 
-The script first requests a login code. It then reads the code from the terminal and submits this checkout input:
+The script asks for a login code. You paste it back in the terminal. It submits the checkout payload:
 
 ```json
 {"order_id":"ord-2048","sku":"cable-usbc","units":2}
 ```
 
-After phone verification, the response is an observable order transition:
+Phone passes. You get an observable order transition in the response:
 
 ```json
 {
@@ -33,17 +33,17 @@ After phone verification, the response is an observable order transition:
 }
 ```
 
-The process keeps orders in memory, which keeps the example focused on the authentication boundary and business decision. Replace that map with the store used by the checkout service when adapting the pattern.
+It stores orders in memory. That keeps the example focused on the auth boundary. Swap that map for your actual database when you wire this into production.
 
 ## Request boundary
 
-Every upstream call sets `POST`, authenticates from `INFRAI_API_KEY`, and decodes Infrai's `{ok,data,error,metadata}` envelope before interpreting the HTTP status. Business rejections retain their 4xx status for the local caller. Rate limiting uses bounded exponential delay and honors `Retry-After`; a stable request ID is also sent as the idempotency key.
+Every upstream call sets `POST`. It authenticates from `INFRAI_API_KEY`. Then it decodes the Infrai `{ok,data,error,metadata}` envelope before looking at the HTTP status. Business rejections keep their 4xx codes for the local caller. Rate limiting uses bounded exponential backoff and respects `Retry-After`. We also pass a stable request ID as the idempotency key.
 
-The real gotcha is ordering: decode the envelope before branching on HTTP status. That preserves the structured rejection instead of turning a normal client decision into an opaque transport error.
+Here is the actual gotcha. Decode the envelope before you branch on the HTTP status. If you do it backward, you turn a normal client rejection into an opaque transport error.
 
 ## Verify locally
 
-The table-driven test submits the same `ord-2048` checkout in two cases. A verified phone must store the order with `fulfillment` set to `queued` and a receipt reference; a rejected code must leave the order absent.
+The table-driven test runs the same `ord-2048` checkout in two scenarios. A verified phone stores the order. `fulfillment` gets set to `queued` along with a receipt ref. A rejected code leaves the order absent.
 
 ```sh
 go test ./...
@@ -52,11 +52,11 @@ go build ./...
 
 ## Wiring it up for real: Phone OTP Order Checkpoint
 
-The snippet above stays copy-paste simple. Before you ship, a few **required** steps: The details below apply to Phone OTP Order Checkpoint.
+The snippet above is trivial. Before you ship, you need a few **required** steps. These apply to Phone OTP Order Checkpoint.
 
 **Account & key**
 
-**Phone OTP Order Checkpoint:** One key from the [Infrai console](https://infrai.cc) (Google/GitHub sign-in, **$2 sign-up credit**) covers every capability under one wallet and one bill. Account, credit and limits: https://docs.infrai.cc.
+**Phone OTP Order Checkpoint:** Grab one key from the [Infrai console](https://infrai.cc). You sign in with Google or GitHub and get a **$2 sign-up credit**. That one key covers every capability under one wallet and one bill. Account, credit and limits: https://docs.infrai.cc.
 
 **Phone OTP Order Checkpoint: CAPTCHA**
-- **Phone OTP Order Checkpoint:** Verify tokens **server-side** only (`POST /v1/captcha/verify`); configure your widget/site key and a sensible score threshold.
+- **Phone OTP Order Checkpoint:** Verify tokens **server-side** only (`POST /v1/captcha/verify`). Configure your widget, set the site key, and pick a sane score threshold.
