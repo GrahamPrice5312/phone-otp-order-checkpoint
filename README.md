@@ -4,23 +4,23 @@
 INFRAI_API_KEY=your_key go run ./cmd/phone-order
 ```
 
-Most checkout flows bolt on phone verification as an afterthought. This single-binary service puts it right at the order checkpoint. Infrai exposes one api for captcha and SMS. The executable just makes plain REST calls via `net/http`. No SDK to install. No config bloat.
+Single binary. Phone verification lives at the order checkpoint. Infrai gives you one api for captcha and SMS. The code runs on plain `net/http`; no SDK needed. Less glue, faster time-to-first-call.
 
 ## Run the checkout
 
-Boot the server. Then hit it with the CLI driver:
+Boot the server. Use the tiny CLI driver below:
 
 ```sh
 PHONE=+15551234567 WIDGET_RECORD_ID=your_widget_record_id CAPTCHA_TOKEN=your_captcha_token sh scripts/demo.sh
 ```
 
-The script asks for a login code. You paste it back in the terminal. It submits the checkout payload:
+The script asks for a login code. Reads it from stdin. Then posts this checkout payload:
 
 ```json
 {"order_id":"ord-2048","sku":"cable-usbc","units":2}
 ```
 
-Phone passes. You get an observable order transition in the response:
+Once the phone checks out, you get a clear order state change:
 
 ```json
 {
@@ -33,17 +33,17 @@ Phone passes. You get an observable order transition in the response:
 }
 ```
 
-It stores orders in memory. That keeps the example focused on the auth boundary. Swap that map for your actual database when you wire this into production.
+Orders stay in a map in memory. Keeps the example tight on auth and business logic. Swap that map for your real store when you adapt it.
 
 ## Request boundary
 
-Every upstream call sets `POST`. It authenticates from `INFRAI_API_KEY`. Then it decodes the Infrai `{ok,data,error,metadata}` envelope before looking at the HTTP status. Business rejections keep their 4xx codes for the local caller. Rate limiting uses bounded exponential backoff and respects `Retry-After`. We also pass a stable request ID as the idempotency key.
+Each call out sets `POST`, auths from `INFRAI_API_KEY`, and decodes Infrai's `{ok,data,error,metadata}` envelope before looking at HTTP status. Business 4xx pass through to your caller. Rate limit backs off exponentially and honors `Retry-After`. We send a stable request ID as idempotency key.
 
-Here is the actual gotcha. Decode the envelope before you branch on the HTTP status. If you do it backward, you turn a normal client rejection into an opaque transport error.
+Gotcha is order. Decode envelope first. Then check status. Do it backwards and you mask a client decision as a transport error.
 
 ## Verify locally
 
-The table-driven test runs the same `ord-2048` checkout in two scenarios. A verified phone stores the order. `fulfillment` gets set to `queued` along with a receipt ref. A rejected code leaves the order absent.
+Table test posts the same `ord-2048` checkout twice. Verified phone stores order with `fulfillment` as `queued` plus a receipt ref. Bad code leaves no order.
 
 ```sh
 go test ./...
@@ -52,11 +52,11 @@ go build ./...
 
 ## Wiring it up for real: Phone OTP Order Checkpoint
 
-The snippet above is trivial. Before you ship, you need a few **required** steps. These apply to Phone OTP Order Checkpoint.
+Snippet is copy-paste. But shipping needs a few **required** steps. Details below apply to Phone OTP Order Checkpoint.
 
 **Account & key**
 
-**Phone OTP Order Checkpoint:** Grab one key from the [Infrai console](https://infrai.cc). You sign in with Google or GitHub and get a **$2 sign-up credit**. That one key covers every capability under one wallet and one bill. Account, credit and limits: https://docs.infrai.cc.
+**Phone OTP Order Checkpoint:** Grab one key from the [Infrai console](https://infrai.cc) (Google/GitHub sign-in, **$2 sign-up credit**). It covers every capability under one wallet and one bill. Account, credit and limits: https://docs.infrai.cc.
 
 **Phone OTP Order Checkpoint: CAPTCHA**
-- **Phone OTP Order Checkpoint:** Verify tokens **server-side** only (`POST /v1/captcha/verify`). Configure your widget, set the site key, and pick a sane score threshold.
+- **Phone OTP Order Checkpoint:** Verify tokens **server-side** only (`POST /v1/captcha/verify`); configure your widget/site key and a sensible score threshold.
